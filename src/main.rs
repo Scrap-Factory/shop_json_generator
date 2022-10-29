@@ -50,7 +50,7 @@ fn main() {
         }
     }
 
-    match serde_json::to_string(&json) {
+    match serde_json::to_string_pretty(&json) {
         Ok(json) => match file.write_all(json.as_bytes()) {
             Ok(_) => {}
             Err(_) => error!("Failed to write to file {output_dir}/{json_name}"),
