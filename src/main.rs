@@ -15,7 +15,11 @@ use std::{
 use structs::{database::Databse, set::Set, shop::Shop};
 use util::FromFile;
 
-const DATABASE: &str = "./Objects/Database/shapesets.shapedb";
+const DBS: [&str; 2] = [
+    "./Objects/Database/shapesets.shapedb",
+    "./Tools/Database/toolsets.tooldb",
+];
+
 fn main() {
     simple_logger::init().expect("Failed to init a logger");
 
@@ -42,11 +46,13 @@ fn main() {
 
     let mut json = HashMap::new();
 
-    match gen_db(DATABASE, &mut json) {
-        Ok(_) => info!("Generated everything succsefully "),
-        Err(err) => {
-            error!("Failed to generate {DATABASE}");
-            println!("{err:#?}")
+    for db in DBS {
+        match gen_db(db, &mut json) {
+            Ok(_) => info!("Generated {db} succsefully "),
+            Err(err) => {
+                error!("Failed to generate {db}");
+                println!("{err:#?}")
+            }
         }
     }
 
@@ -64,10 +70,19 @@ fn gen_db(path: &str, json: &mut HashMap<String, Shop>) -> Result<(), GenDbError
         .change_context(GenDbError)
         .attach_printable(format!("Failed to parse {path}"))?;
 
-    for path in db.shape_set_list {
-        gen_set(&path.replace("$CONTENT_DATA", "."), json)
-            .change_context(GenDbError)
-            .attach_printable(format!("Failed to generate set {path}"))?;
+    if let Some(db) = db.shape_set_list {
+        for path in db {
+            gen_set(&path.replace("$CONTENT_DATA", "."), json)
+                .change_context(GenDbError)
+                .attach_printable(format!("Failed to generate set {path}"))?;
+        }
+    }
+    if let Some(db) = db.tool_set_list {
+        for path in db {
+            gen_set(&path.replace("$CONTENT_DATA", "."), json)
+                .change_context(GenDbError)
+                .attach_printable(format!("Failed to generate set {path}"))?;
+        }
     }
 
     Ok(())
@@ -90,6 +105,14 @@ fn gen_set(path: &str, json: &mut HashMap<String, Shop>) -> Result<(), GenSetErr
         for block in blocks {
             if let Some(shop) = block.shop {
                 json.insert(block.uuid, shop);
+            }
+        }
+    }
+
+    if let Some(tools) = set.tool_list {
+        for tool in tools {
+            if let Some(shop) = tool.shop {
+                json.insert(tool.uuid, shop);
             }
         }
     }

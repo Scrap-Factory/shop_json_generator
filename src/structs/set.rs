@@ -15,6 +15,7 @@ pub struct Data {
 pub struct Set {
     pub part_list: Option<Vec<Data>>,
     pub block_list: Option<Vec<Data>>,
+    pub tool_list: Option<Vec<Data>>,
 }
 
 impl FromFile<Set> for Set {}
