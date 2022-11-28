@@ -1,5 +1,5 @@
 [package]
-name = "data_price_to_shop_json"
+name = "shop_json_generator"
 version = "1.0.0"
 edition = "2021"
 
