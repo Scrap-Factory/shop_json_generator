@@ -3,7 +3,7 @@ mod structs;
 mod util;
 
 use colored::Colorize;
-use error_stack::{Result, ResultExt};
+use error_stack::{IntoReport, Result, ResultExt};
 use errors::{GenDbError, GenSetError};
 use log::{error, info};
 use std::{
@@ -12,12 +12,20 @@ use std::{
     io::Write,
     process,
 };
-use structs::{database::Databse, set::Set, shop::Shop};
+use structs::{database::Database, folder::Folder, set::Set, shop::Shop};
 use util::FromFile;
 
-const DBS: [&str; 2] = [
-    "./Objects/Database/shapesets.shapedb",
-    "./Tools/Database/toolsets.tooldb",
+const DBS: [Folder; 2] = [
+    Folder {
+        path: "./Objects/Database/shapesets.shapedb",
+        db_entry: "shape_set_list",
+        set_entries: ["block_list", "part_list"],
+    },
+    Folder {
+        path: "./Tools/Database/toolsets.tooldb",
+        db_entry: "tool_set_list",
+        set_entries: ["tool_list", ""],
+    },
 ];
 
 fn main() {
@@ -44,13 +52,13 @@ fn main() {
         process::exit(1)
     });
 
-    let mut json = HashMap::new();
+    let mut json: HashMap<String, Shop> = HashMap::new();
 
     for db in DBS {
-        match gen_db(db, &mut json) {
-            Ok(_) => info!("Generated {db} succsefully "),
+        match gen_db(&db, &mut json) {
+            Ok(_) => info!("Generated {} succsefully", db.path),
             Err(err) => {
-                error!("Failed to generate {db}");
+                error!("Failed to generate {}", db.path);
                 println!("{err:#?}")
             }
         }
@@ -65,54 +73,55 @@ fn main() {
     }
 }
 
-fn gen_db(path: &str, json: &mut HashMap<String, Shop>) -> Result<(), GenDbError> {
-    let db = Databse::from_file(path)
+fn gen_db(folder: &Folder, json: &mut HashMap<String, Shop>) -> Result<(), GenDbError> {
+    let db = Database::from_file(folder.path)
         .change_context(GenDbError)
-        .attach_printable(format!("Failed to parse {path}"))?;
+        .attach_printable(format!("Failed to parse {}", folder.path))?;
 
-    if let Some(db) = db.shape_set_list {
-        for path in db {
-            gen_set(&path.replace("$CONTENT_DATA", "."), json)
-                .change_context(GenDbError)
-                .attach_printable(format!("Failed to generate set {path}"))?;
-        }
-    }
-    if let Some(db) = db.tool_set_list {
-        for path in db {
-            gen_set(&path.replace("$CONTENT_DATA", "."), json)
-                .change_context(GenDbError)
-                .attach_printable(format!("Failed to generate set {path}"))?;
+    let sets = db[folder.db_entry]
+        .as_ref()
+        .ok_or(GenDbError)
+        .into_report()
+        .attach_printable(format!(
+            "Failed to find {} in file {}",
+            folder.db_entry, folder.path
+        ))?;
+
+    for set in sets {
+        match gen_set(&set.replace("$CONTENT_DATA", "."), folder, json)
+            .change_context(GenDbError)
+            .attach_printable(format!("Failed to generate set {}", set))
+        {
+            Ok(_) => {}
+            Err(err) => {
+                println!("{err}");
+                continue;
+            }
         }
     }
 
     Ok(())
 }
 
-fn gen_set(path: &str, json: &mut HashMap<String, Shop>) -> Result<(), GenSetError> {
+fn gen_set(
+    path: &str,
+    folder: &Folder,
+    json: &mut HashMap<String, Shop>,
+) -> Result<(), GenSetError> {
     let set = Set::from_file(path)
         .change_context(GenSetError)
         .attach_printable(format!("Failed to parse {path}"))?;
 
-    if let Some(parts) = set.part_list {
-        for part in parts {
-            if let Some(shop) = part.shop {
-                json.insert(part.uuid, shop);
-            }
+    for entry in folder.set_entries {
+        if entry.is_empty() {
+            continue;
         }
-    }
 
-    if let Some(blocks) = set.block_list {
-        for block in blocks {
-            if let Some(shop) = block.shop {
-                json.insert(block.uuid, shop);
-            }
-        }
-    }
-
-    if let Some(tools) = set.tool_list {
-        for tool in tools {
-            if let Some(shop) = tool.shop {
-                json.insert(tool.uuid, shop);
+        if let Some(data) = set[entry].as_ref() {
+            for part in data {
+                if let Some(shop) = part.shop.clone() {
+                    json.insert(part.uuid.clone(), shop);
+                }
             }
         }
     }
